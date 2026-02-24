@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
 import { Box, Typography, Button, Paper } from '@mui/material'
 import { formatTime } from '../utils/formatTime'
+import { playMainStart, playGraceStart, playTimerStop, playLastQuarterWarning, playMainLoopStart } from '../utils/sounds'
 
 const BUTTONS = [
   { id: 'startStop', label: 'Start', color: 'success' },
@@ -21,6 +22,8 @@ const ClimbingTimer = forwardRef(function ClimbingTimer(
   const [inGrace, setInGrace] = useState(false)
   const startTimeRef = useRef(0)
   const pausedElapsedRef = useRef(0)
+  const prevInGraceRef = useRef(false)
+  const lastQuarterPlayedRef = useRef(false)
 
   useEffect(() => {
     if (!running) return
@@ -31,10 +34,25 @@ const ClimbingTimer = forwardRef(function ClimbingTimer(
       const positionInCycle = elapsed % cycleLength
       if (positionInCycle < mainDuration) {
         // Main phase: countdown main time (e.g. 4:00 -> 0:00)
-        setDisplaySeconds(Math.max(0, mainDuration - positionInCycle))
+        const remaining = mainDuration - positionInCycle
+        setDisplaySeconds(Math.max(0, remaining))
+        if (prevInGraceRef.current) {
+          prevInGraceRef.current = false
+          lastQuarterPlayedRef.current = false
+          playMainLoopStart()
+        }
         setInGrace(false)
+        // Last 25% of main: play warning once per main cycle
+        if (remaining <= mainDuration * 0.25 && remaining > 0 && !lastQuarterPlayedRef.current) {
+          lastQuarterPlayedRef.current = true
+          playLastQuarterWarning()
+        }
       } else {
         // Grace phase: countdown grace time (e.g. 0:10 -> 0:00), then loop back to main
+        if (!prevInGraceRef.current) {
+          prevInGraceRef.current = true
+          playGraceStart()
+        }
         setDisplaySeconds(Math.max(0, cycleLength - positionInCycle))
         setInGrace(true)
       }
@@ -46,12 +64,14 @@ const ClimbingTimer = forwardRef(function ClimbingTimer(
     if (running) {
       pausedElapsedRef.current = (Date.now() - startTimeRef.current) / 1000
       setRunning(false)
+      playTimerStop()
       return
     }
     startTimeRef.current =
       pausedElapsedRef.current > 0
         ? Date.now() - pausedElapsedRef.current * 1000
         : Date.now()
+    playMainStart()
     setRunning(true)
   }
 
@@ -76,6 +96,8 @@ const ClimbingTimer = forwardRef(function ClimbingTimer(
     setDisplaySeconds(0)
     setInGrace(false)
     pausedElapsedRef.current = 0
+    prevInGraceRef.current = false
+    lastQuarterPlayedRef.current = false
   }
 
   useImperativeHandle(ref, () => ({
